@@ -147,12 +147,12 @@
 			</button>
 		</div>
 
-		<div id="registration-form" class="p-6 space-y-4 bg-slate-50">
+		<div id="registration-interface" class="p-6 space-y-4 bg-slate-50">
 			<p class="text-xs text-slate-500 text-center">Please introduce yourself to start chatting!</p>
 			<div class="space-y-3">
-				<input type="text" id="visitor-name" placeholder="Full Name" onkeypress="handleKeyPress(event)"
+				<input type="text" id="visitor-name" placeholder="Full Name" onkeypress="startChatOnEnter(event)"
 					class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-				<input type="text" id="visitor-tg" placeholder="Telegram Username (e.g. @yourname)" onkeypress="handleKeyPress(event)"
+				<input type="text" id="visitor-tg" placeholder="Telegram Username (e.g. @yourname)" onkeypress="startChatOnEnter(event)"
 					class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
 			</div>
 			<button id="start-chat"
@@ -168,17 +168,17 @@
 				</div>
 			</div>
 
-			<form id="chat-form" class="p-3 border-t border-slate-200 flex gap-2">
-				<input type="text" id="chat-input" placeholder="Type your message..."
+			<div id="chat-div" class="p-3 border-t border-slate-200 flex gap-2">
+				<input type="text" id="chat-input" placeholder="Type your message..." onkeypress="sendMessageOnEnter(event)"
 					class="flex-1 bg-slate-100 border-none rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-				<button type="submit" class="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition">
+				<button id="visitor-msg" class="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition">
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
 						stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
 							d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
 					</svg>
 				</button>
-			</form>
+			</div>
 		</div>
 	</div>
 

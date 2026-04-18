@@ -75,6 +75,19 @@ def on_register(data: dict):
     print(f"New visitor registered {tg} ({name})")
 
 
+@socketIO.on('visitor_message')
+def on_visitor_message(data: dict):
+    message: str = data['message'].strip()
+    visitor = Visitor.query.filter_by(session_id=request.sid)
+
+    if not message or not not visitor:
+        return
+    
+    new_msg = Message(text=message, visitor_id=visitor.id)
+    db.session.add(new_msg)
+    db.session.commit()
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
