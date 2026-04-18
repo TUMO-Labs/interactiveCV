@@ -1,5 +1,6 @@
 import os
 
+import requests
 from flask import Flask, render_template, request, session, redirect, url_for
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
@@ -20,8 +21,6 @@ app.config['TG_CHAT_ID'] = os.getenv('TG_CHAT_ID')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///interactive-cv.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-TG_API = f'https://api.telegram.org/bot{app.config['TG_BOT_TOKEN']}/'
 
 db.init_app(app)
 
@@ -78,14 +77,34 @@ def on_register(data: dict):
 @socketIO.on('visitor_message')
 def on_visitor_message(data: dict):
     message: str = data['message'].strip()
-    visitor = Visitor.query.filter_by(session_id=request.sid)
+    visitor = Visitor.query.filter_by(session_id=request.sid).first()
 
-    if not message or not not visitor:
+    if not message or not visitor:
         return
     
     new_msg = Message(text=message, visitor_id=visitor.id)
     db.session.add(new_msg)
     db.session.commit()
+
+    tg_msg = f"💬 Message from {visitor.tg_username} ({visitor.full_name}):\n{message}"
+    send_telegram_notification(tg_msg)
+
+
+def send_telegram_notification(text: str):
+    url = f"https://api.telegram.org/bot{app.config['TG_BOT_TOKEN']}/sendMessage"
+    payload = {
+        "chat_id": app.config['TG_CHAT_ID'],
+        "text": text
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=5)
+        response.raise_for_status() 
+        print("Telegram notification sent successfully!")
+    except requests.exceptions.HTTPError as err:
+        print(f"Telegram API Error: {err.response.text}")
+    except Exception as e:
+        print(f"Connection Error: {e}")
 
 
 if __name__ == '__main__':
