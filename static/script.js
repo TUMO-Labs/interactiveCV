@@ -1,3 +1,5 @@
+let socket = io();
+
 const chatToggle = document.getElementById('chat-toggle');
 const chatWindow = document.getElementById('chat-window');
 const closeChat = document.getElementById('close-chat');
