@@ -4,12 +4,12 @@ from flask_socketio import SocketIO, emit
 
 
 class Config:
-     SECRET_KEY = os.environ.get("SECRET_KEY") or os.urandom(24)
-     DEBUG = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1", "t")
-     CORE_ORIGINS = os.environ.get("CORE_ORIGINS", "*")
+    SECRET_KEY = os.environ.get("SECRET_KEY") or os.urandom(24)
+    DEBUG = os.environ.get("FLASK_DEBUG", "True").lower() in ("true", "1", "t")
+    CORE_ORIGINS = os.environ.get("CORE_ORIGINS", "*")
 
-     # SQLALCHEMY_DATABASE_URI = 'sqlite:///chat.db'
-     # SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # SQLALCHEMY_DATABASE_URI = 'sqlite:///interactive-cv.db'
+    # SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
 app = Flask(__name__)
@@ -26,14 +26,14 @@ socketIO = SocketIO(
 
 @app.route("/")
 def home():
-    return "Hello there!"
+    return render_template("index.html")
 
 
 if __name__ == "__main__":
     socketIO.run(
-         app,
-         host="0.0.0.0",
-         port=5000,
-         debug=app.config["DEBUG"],
-         use_reloader=app.config["DEBUG"]
-     )
+        app,
+        host="0.0.0.0",
+        port=5000,
+        debug=app.config["DEBUG"],
+        use_reloader=app.config["DEBUG"]
+    )
