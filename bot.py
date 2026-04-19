@@ -128,12 +128,12 @@ def build_chats_screen():
 
 def build_session_screen(visitor: Visitor):
     messages = visitor.messages[-20:]
+    lines = []
 
-    header = f'<b>{visitor.full_name}</b>\n {visitor.tg_username}\n--------------------\n'
+    header = f'<b>{visitor.full_name}</b>\n {visitor.tg_username}'
     if not messages:
         body = '<i>No messages yet — they\'ll appear here once the visitor types.</i>'
     else:
-        lines = []
         for msg in messages:
             if msg.sender == 'visitor':
                 lines.append(f'<b>{visitor.full_name}:</b> {msg.text}')
@@ -143,14 +143,13 @@ def build_session_screen(visitor: Visitor):
                 lines.append(f'<b>Bot:</b> {msg.text}')
 
     body = '\n'.join(lines)
-    footer = '\n--------------------\n'
 
     markup = {'inline_keyboard': [[
         {'text': '← All chats',  'callback_data': 'back'},
         {'text': '✓ Close chat', 'callback_data': f'close:{visitor.id}'},
     ]]}
 
-    return header + body + footer, markup
+    return header + body, markup
 
 
 def handle_inline_button(data: dict):
@@ -196,7 +195,7 @@ def handle_inline_button(data: dict):
             db.session.commit()
             socketIO.emit('chat_closed', {
                 'message': 'This conversation has been closed.'
-            }, room=visitor.socket_id)
+            }, room=visitor.session_id)
 
         admin_state[from_id] = None
         text, markup = build_chats_screen()
@@ -226,7 +225,7 @@ def handle_command(cmd: str, from_id:str):
             db.session.commit()
             socketIO.emit('chat_closed', {
                 'message': 'This conversation has been closed.'
-            }, room=visitor.socket_id)
+            }, room=visitor.session_id)
             admin_state[from_id] = None
             text, markup = build_chats_screen()
             tg_send('✓ Chat closed.\n\n' + text, markup)
@@ -249,8 +248,8 @@ def handle_text_message(data: dict):
     
     visitor_id = admin_state.get(from_id)
     if not visitor_id:
-        text, markup = build_chats_screen()
-        tg_send('You\'re not inside a conversation. Use /chats to pick one.' + text, markup)
+        t, markup = build_chats_screen()
+        tg_send('You\'re not inside a conversation. Use /chats to pick one.' + t, markup)
         return 'ok', 200
     
     visitor = Visitor.query.filter_by(id=visitor_id).first()
@@ -268,7 +267,7 @@ def handle_text_message(data: dict):
         'sender':     'you',
         'text':       text,
         'created_at': reply.created_at.isoformat(),
-    }, room=visitor.socket_id)
+    }, room=visitor.session_id)
 
     tg_send(f'✓ <i>Sent to {visitor.full_name}</i>')
  
