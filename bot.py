@@ -1,8 +1,11 @@
 import os
+from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
-from models import Visitor
+
+from models import Visitor, Message, db
+from config import socketIO
 
 
 load_dotenv()
@@ -23,6 +26,21 @@ FAQ = {
     'hi':         'Hi! Ask me anything about my work, or leave a message for Arman directly.',
     'hey':        'Hi! Ask me anything about my work, or leave a message for Arman directly.',
 }
+
+USAGE = \
+"""
+Hi <b>Interactive CV Admin</b>\n\n
+This bot is your mobile admin panel for the CV chat widget.\n\n
+<b>Commands</b>\n
+/chats — view &amp; open active conversations\n
+/back  — return to the chat list\n
+/close — close the current conversation\n
+/help  — show this message\n\n
+<i>Once inside a conversation, just type to reply directly to the visitor.</i>
+"""
+
+
+admin_state: dict = {}
 
 
 def bot_reply(text: str):
@@ -97,7 +115,7 @@ def build_chats_screen():
         badge = f' 🔴 {vis.unread_count}' if vis.unread_count > 0 else ''
         last_msg = vis.messages[-1].text[:30] + '...' if vis.messages else 'No messages yet'
 
-        lines.append(f'<b>{vis.fullname}</b>{badge}\n  {vis.tg_username}\n  <i>{last_msg}</i>')
+        lines.append(f'<b>{vis.full_name}</b>{badge}\n  {vis.tg_username}\n  <i>{last_msg}</i>')
 
         btn_label = f'{'🔴 ' if vis.unread_count else ''}{vis.full_name}'
         buttons.append([{
@@ -133,3 +151,129 @@ def build_session_screen(visitor: Visitor):
     ]]}
 
     return header + body + footer, markup
+
+
+def handle_inline_button(data: dict):
+    cq = data['callback_query']
+    cq_id = cq['id']
+    from_id = str(cq['message']['chat']['id'])
+    msg_id = cq['message']['message_id']
+    action: str  = cq.get('data', '')
+
+    if from_id != str(TG_CHAT_ID):
+        tg_answer_callback(cq_id)
+        return 'ok', 200
+    
+    if action in ('back', 'chats'):
+        admin_state[from_id] = None
+        text, markup = build_chats_screen()
+        tg_edit(msg_id, text, markup)
+        tg_answer_callback(cq_id, 'Back to chats')
+
+    elif action.startswith('open:'):
+        visitor_id = int(action.split(':', 1)[1])
+        visitor = Visitor.query.filter_by(id=visitor_id).first()
+
+        if not visitor:
+            tg_answer_callback(cq_id, 'Visitor not found')
+            return 'ok', 200
+        
+        admin_state[from_id] =visitor_id
+        visitor.unread_count = 0
+        db.session.commit()
+
+        text, markup = build_session_screen(visitor)
+        tg_edit(msg_id, text, markup)
+        tg_answer_callback(cq_id, f'Opened — {visitor.full_name}')
+
+    elif action.startswith('close:'):
+        visitor_id = int(action.split(':', 1)[1])
+        visitor = Visitor.query.filter_by(id=visitor_id).first()
+
+        if visitor:
+            visitor.is_closed = True
+            visitor.unread_count = 0
+            db.session.commit()
+            socketIO.emit('chat_closed', {
+                'message': 'This conversation has been closed.'
+            }, room=visitor.socket_id)
+
+        admin_state[from_id] = None
+        text, markup = build_chats_screen()
+        tg_edit(msg_id, '✓ Chat closed.\n\n' + text, markup)
+        tg_answer_callback(cq_id, 'Chat closed')
+
+    return 'ok', 200
+
+
+def handle_command(cmd: str, from_id:str):
+    if cmd in ('/start', '/help'):
+        tg_send(USAGE)
+
+    elif cmd in ('/chats', '/back'):
+        admin_state[from_id] = None
+        text, markup = build_chats_screen()
+        tg_send(text, markup)
+    
+    elif cmd == '/close':
+        visitor_id = admin_state.get(from_id)
+        if not visitor_id:
+            tg_send('You\'re not inside a conversation. Use /chats to pick one.')
+        else:
+            visitor = Visitor.query.filter_by(id=visitor_id).first()
+            visitor.is_closed = True
+            visitor.unread_count = 0
+            db.session.commit()
+            socketIO.emit('chat_closed', {
+                'message': 'This conversation has been closed.'
+            }, room=visitor.socket_id)
+            admin_state[from_id] = None
+            text, markup = build_chats_screen()
+            tg_send('✓ Chat closed.\n\n' + text, markup)
+
+    return 'ok', 200
+
+
+def handle_text_message(data: dict):
+    msg = data.get('message', {})
+    from_id = str(msg.get('chat', {}).get('id', ''))
+    text: str = msg.get('text').strip()
+
+    if not text or from_id != str(TG_CHAT_ID):
+        return 'ok', 200
+    
+    if text.startswith('/'):
+        cmd = text.split()[0].lower()
+
+        return handle_command(cmd, from_id)
+    
+    visitor_id = admin_state.get(from_id)
+    if not visitor_id:
+        text, markup = build_chats_screen()
+        tg_send('You\'re not inside a conversation. Use /chats to pick one.' + text, markup)
+        return 'ok', 200
+    
+    visitor = Visitor.query.filter_by(id=visitor_id).first()
+    if not visitor or visitor.is_closed:
+        admin_state[from_id] = None
+        tg_send('That conversation is closed. Use /chats to see active ones.')
+        return 'ok', 200
+    
+    reply = Message(visitor_id=visitor_id, sender='you', text=text)
+    visitor.last_activity = datetime.utcnow()
+    db.session.add(reply)
+    db.session.commit()
+
+    socketIO.emit('new_message', {
+        'sender':     'you',
+        'text':       text,
+        'created_at': reply.created_at.isoformat(),
+    }, room=visitor.socket_id)
+
+    tg_send(f'✓ <i>Sent to {visitor.full_name}</i>')
+ 
+    return 'ok', 200
+
+
+def admin_currently_viewing(visitor_id: int):
+    return admin_state.get(str(TG_CHAT_ID)) == visitor_id

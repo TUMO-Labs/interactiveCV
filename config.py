@@ -1,6 +1,7 @@
 import os
 
 from flask import Flask
+from flask_socketio import SocketIO
 from dotenv import load_dotenv
 
 
@@ -14,3 +15,10 @@ app.config['CORE_ORIGINS'] = os.getenv('CORE_ORIGINS', '*')
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///interactive-cv.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+socketIO = SocketIO(
+    app,
+    cors_allowed_origins=app.config['CORE_ORIGINS'],
+    logger=True,
+    engineio_logger=True
+)
