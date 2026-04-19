@@ -1,26 +1,13 @@
-import os
-
 import requests
-from flask import Flask, render_template, request, session, redirect, url_for
+from flask import render_template, request, session
 from flask_socketio import SocketIO, emit
-from dotenv import load_dotenv
 
+from config import app
 from models import Visitor, Message, db
+from bot import bot_reply, tg_send, tg_edit, \
+    tg_answer_callback, build_chats_screen, build_session_screen
 
-
-load_dotenv()
-
-app = Flask(__name__)
-
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY') or os.urandom(24)
-app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'True').lower() in ('true', '1', 't')
-app.config['CORE_ORIGINS'] = os.getenv('CORE_ORIGINS', '*')
-
-app.config['TG_BOT_TOKEN'] = os.getenv('TG_BOT_TOKEN')
-app.config['TG_CHAT_ID'] = os.getenv('TG_CHAT_ID')
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///interactive-cv.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+from bot import TG_CHAT_ID
 
 db.init_app(app)
 
@@ -31,6 +18,7 @@ socketIO = SocketIO(
     engineio_logger=True
 )
 
+admin_state: dict = {}
 
 # App routes
 @app.route('/')
