@@ -34,7 +34,8 @@ This bot is your mobile admin panel for the CV chat widget.\n\n
 <b>Commands</b>\n
 /chats — view &amp; open active conversations\n
 /back  — return to the chat list\n
-/close — close the current conversation\n
+/close — close current conversation\n
+/delete — delete current conversation\n
 /help  — show this message\n\n
 <i>Once inside a conversation, just type to reply directly to the visitor.</i>
 """
@@ -247,7 +248,23 @@ def handle_command(cmd: str, from_id:str):
             }, room=visitor.session_id)
             admin_state[from_id] = None
             text, markup = build_chats_screen()
-            tg_send('✓ Chat closed.\n\n' + text, markup)
+            tg_send('✅ Chat closed.\n\n' + text, markup)
+    elif cmd == '/delete':
+        visitor_id = admin_state.get(from_id)
+        if not visitor_id:
+            tg_send('You\'re not inside a conversation. Use /chats to pick one.')
+        else:
+            visitor = Visitor.query.filter_by(id=visitor_id).first()
+            if not visitor.is_closed:
+                socketIO.emit('chat_closed', {
+                    'message': 'This conversation has been closed.'
+                }, room=visitor.session_id)
+
+            db.session.delete(visitor)
+            db.session.commit()
+            admin_state[from_id] = None
+            text, markup = build_chats_screen()
+            tg_send('🚮 Chat deleted.\n\n' + text, markup)
 
     return 'ok', 200
 

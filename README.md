@@ -91,7 +91,7 @@ When the visitor submits the form, the browser emits `register_visitor` with
 
 1. Strips whitespace, ensures the `@` prefix is present
 2. Creates a `Visitor` row in the database with their name, tg username,
-   and their SocketIO session ID (`request.sid`) as `socket_id`
+   and their SocketIO session ID (`request.sid`) as `session_id`
 3. Calls `join_room(request.sid)` — this is how replies are targeted back
    to exactly this browser tab later
 4. Sends you a Telegram notification with a `[💬 Chat with Name]` button
@@ -100,7 +100,7 @@ When the visitor submits the form, the browser emits `register_visitor` with
 
 Every message the visitor types goes through `on_visitor_message` in `main.py`:
 
-1. Look up their `Visitor` row by `socket_id=request.sid`
+1. Look up their `Visitor` row by `session_id=request.sid`
 2. Save the message to the `Message` table with `sender='visitor'`
 3. Run it through the FAQ bot — if a keyword matches, save a bot reply
    and emit it back to the visitor. Stop here (no Telegram ping)
@@ -118,20 +118,23 @@ All admin interaction goes through the Telegram bot. There are two input types:
   badge, edits the message in place to show the conversation view
 - `close:<id>` — marks visitor `is_closed=True`, emits `chat_closed` to the
   visitor's browser, returns to the chats list
+- `delete:<id>` — deletes visitor and messages related to him, emits `chat_closed` to the
+  visitor's browser (if not closed already), returns to the chats list
 - `back` / `chats` — clears `admin_state`, shows the chats list
 
 **Text messages** — handled in `handle_text_message`:
 - If it starts with `/` → route to `handle_command`
 - Otherwise → look up `admin_state` to find the active session, save a
   `Message` with `sender='you'`, emit `new_message` to the visitor's
-  browser via `socketio.emit(..., room=visitor.socket_id)`
+  browser via `socketio.emit(..., room=visitor.session_id)`
 
 **Commands:**
 | Command | Action |
 |---------|--------|
 | `/start` or `/help` | Show usage instructions |
 | `/chats` or `/back` | Show active conversations list |
-| `/close` | Close the current conversation |
+| `/close` | Close current conversation |
+| `/delete` | Delete current conversation |
 
 ### Step 5 — Your reply reaches the visitor
 
@@ -139,17 +142,17 @@ When you type a reply in Telegram, Flask receives it via the webhook, saves
 it to the DB, then calls:
 
 ```python
-socketio.emit('new_message', {'sender': 'you', 'text': text}, room=visitor.socket_id)
+socketio.emit('new_message', {'sender': 'you', 'text': text}, room=visitor.session_id)
 ```
 
 The visitor's browser is subscribed to a SocketIO room named after their
-`socket_id`. The message lands there instantly and `script.js` appends it
+`session_id`. The message lands there instantly and `script.js` appends it
 to the chat window as a left-aligned bubble labelled "✏️ Arman".
 
 ### Step 6 — Visitor disconnects
 
 When the visitor closes their tab, the `disconnect` SocketIO event fires.
-Flask finds their `Visitor` row by `socket_id` and sets `is_closed=True`.
+Flask finds their `Visitor` row by `session_id` and sets `is_closed=True`.
 This removes them from the active chats list so ghost sessions don't pile up.
 
 ---
@@ -206,7 +209,7 @@ automatically and you don't get a ping. Add or edit entries freely.
 | `id` | Integer PK | Stable identifier used in Telegram button `callback_data` (`open:3`) and as FK in Message |
 | `full_name` | String | Display name shown in the chats list and conversation header |
 | `tg_username` | String | Always stored as `@handle` — how you reach them after they leave |
-| `socket_id` | String | SocketIO `request.sid` — used to push replies to the right browser tab |
+| `session_id` | String | SocketIO `request.sid` — used to push replies to the right browser tab |
 | `started_at` | DateTime | When they registered — shown as "Started X ago" |
 | `last_activity` | DateTime | Updated on every message — used to sort chats list |
 | `is_closed` | Boolean | Soft delete — hides session from active list without losing history |
