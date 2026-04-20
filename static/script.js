@@ -116,7 +116,6 @@ chatToggle.addEventListener('click', toggleChat);
 closeChat.addEventListener('click', toggleChat);
 startChatBtn.addEventListener('click', startChat);
 visitorMsgBtn.addEventListener('click', sendMessage);
-setupSectionNavigation();
  
 // Server -> client events
 socket.on('new_message', (data) => {
