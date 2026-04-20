@@ -19,6 +19,7 @@ interactiveCV/
 ├── .env              # Secrets (never commit this)
 ├── static/
 │   ├── script.js     # Frontend chat logic
+│   ├── style.css     # Styles for frontend
 │   └── arman.JPG     # Profile photo
 ├── templates/
 │   └── index.html    # CV page + chat widget (Tailwind CSS)

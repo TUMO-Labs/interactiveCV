@@ -7,15 +7,15 @@ const regForm     = document.getElementById('registration-interface');
 const chatInterface = document.getElementById('chat-interface');
 const startChatBtn  = document.getElementById('start-chat');
 const visitorMsgBtn = document.getElementById('visitor-msg');
- 
-// ── Show chat interface after registration ────────────────────────────────────
+
+// ── Show chat interface after registration
 function showChatInterface(name) {
     regForm.classList.add('hidden');
     chatInterface.classList.remove('hidden');
     document.getElementById('display-name').innerText = name;
 }
- 
-// ── Register visitor and switch to chat view ──────────────────────────────────
+
+// ── Register visitor and switch to chat view
 function startChat() {
     const name = document.getElementById('visitor-name').value.trim();
     const tg   = document.getElementById('visitor-tg').value.trim();
@@ -30,8 +30,7 @@ function startChat() {
     showChatInterface(name);
 }
  
-// ── Append a message bubble to the chat ──────────────────────────────────────
-// sender: 'visitor' | 'you' | 'bot'
+// Append a message bubble to the chat
 function addMessage(message, sender = 'visitor') {
     const messageContainer = document.getElementById('message-container');
     if (!messageContainer || !message || message.trim() === '')
@@ -42,13 +41,11 @@ function addMessage(message, sender = 'visitor') {
     const row = document.createElement('div');
     row.className = `flex ${isVisitor ? 'justify-end' : 'justify-start'}`;
  
-    // Small sender label above the bubble (only for non-visitor messages)
     if (!isVisitor) {
         const label = document.createElement('div');
         label.className = 'text-xs text-slate-400 mb-1 ml-1';
         label.textContent = sender === 'bot' ? '🤖 Bot' : '✏️ Arman';
  
-        // Wrap label + bubble in a column
         const col = document.createElement('div');
         col.className = 'flex flex-col items-start max-w-[80%]';
         col.appendChild(label);
@@ -62,7 +59,7 @@ function addMessage(message, sender = 'visitor') {
         row.appendChild(col);
     } else {
         const bubble = document.createElement('div');
-        bubble.className = 'max-w-[80%] bg-blue-100 border border-blue-200 p-3 rounded-lg rounded-tr-none shadow-sm text-slate-700';
+        bubble.className = 'max-w-[80%] bg-sky-600 border border-sky-700 p-3 rounded-lg rounded-tr-none shadow-sm text-white';
         bubble.style.whiteSpace = 'pre-wrap';
         bubble.textContent = message.trim();
         row.appendChild(bubble);
@@ -72,7 +69,7 @@ function addMessage(message, sender = 'visitor') {
     messageContainer.scrollTop = messageContainer.scrollHeight;
 }
  
-// ── Send visitor message ──────────────────────────────────────────────────────
+// Send visitor message
 function sendMessage() {
     const input   = document.getElementById('chat-input');
     const message = input.value.trim();
@@ -84,7 +81,7 @@ function sendMessage() {
     addMessage(message, 'visitor');
 }
  
-// ── Toggle chat panel open/closed ─────────────────────────────────────────────
+// Toggle chat panel open/closed
 function toggleChat() {
     if (chatWindow.classList.contains('hidden')) {
         chatWindow.classList.remove('hidden');
@@ -99,7 +96,7 @@ function toggleChat() {
     }
 }
  
-// ── Enter key shortcuts ───────────────────────────────────────────────────────
+// Enter key shortcuts
 function startChatOnEnter(event) {
     if (event.key === 'Enter') {
         event.preventDefault();
@@ -114,33 +111,28 @@ function sendMessageOnEnter(event) {
     }
 }
  
-// ── Button listeners ──────────────────────────────────────────────────────────
+// Button listeners
 chatToggle.addEventListener('click', toggleChat);
 closeChat.addEventListener('click', toggleChat);
 startChatBtn.addEventListener('click', startChat);
 visitorMsgBtn.addEventListener('click', sendMessage);
+setupSectionNavigation();
  
-// ── Server → client events ────────────────────────────────────────────────────
- 
-// Arman or the bot replied — show the message in the chat window
+// Server -> client events
 socket.on('new_message', (data) => {
-    // data.sender is 'you' (Arman's reply) or 'bot' (FAQ auto-reply)
     addMessage(data.text, data.sender);
 });
- 
-// Arman closed the conversation from Telegram
+
 socket.on('chat_closed', (data) => {
     const messageContainer = document.getElementById('message-container');
     if (!messageContainer) return;
- 
-    // Show a system notice inside the message area
+
     const notice = document.createElement('div');
     notice.className = 'text-center text-xs text-slate-400 py-2';
     notice.textContent = data.message || 'This conversation has been closed.';
     messageContainer.appendChild(notice);
     messageContainer.scrollTop = messageContainer.scrollHeight;
  
-    // Disable the input so the visitor can't keep typing into a closed chat
     const input  = document.getElementById('chat-input');
     const button = document.getElementById('visitor-msg');
     if (input)  { input.disabled = true;  input.placeholder = 'Chat closed.'; }
