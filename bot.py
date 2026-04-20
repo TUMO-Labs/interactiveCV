@@ -145,8 +145,9 @@ def build_session_screen(visitor: Visitor):
     body = '\n'.join(lines)
 
     markup = {'inline_keyboard': [[
-        {'text': '← All chats',  'callback_data': 'back'},
-        {'text': '✓ Close chat', 'callback_data': f'close:{visitor.id}'},
+        {'text': '⬅️ All chats',  'callback_data': 'back'},
+        {'text': '✅ Close chat', 'callback_data': f'close:{visitor.id}'},
+        {'text': '🚮 Delete chat', 'callback_data': f'delete:{visitor.id}'}
     ]]}
 
     return header + body, markup
@@ -199,8 +200,26 @@ def handle_inline_button(data: dict):
 
         admin_state[from_id] = None
         text, markup = build_chats_screen()
-        tg_edit(msg_id, '✓ Chat closed.\n\n' + text, markup)
+        tg_edit(msg_id, '✅ Chat closed.\n\n' + text, markup)
         tg_answer_callback(cq_id, 'Chat closed')
+
+    elif action.startswith('delete:'):
+        visitor_id = int(action.split(':', 1)[1])
+        visitor = Visitor.query.filter_by(id=visitor_id).first()
+
+        if visitor:
+            if not visitor.is_closed:
+                socketIO.emit('chat_closed', {
+                    'message': 'This conversation has been closed.'
+                }, room=visitor.session_id)
+            
+            db.session.delete(visitor)
+            db.session.commit()
+        
+        admin_state[from_id] = None
+        text, markup = build_chats_screen()
+        tg_edit(msg_id, '🚮 Chat deleted.\n\n' + text, markup)
+        tg_answer_callback(cq_id, 'Chat deleted')
 
     return 'ok', 200
 
