@@ -4,13 +4,13 @@ After=network.target
 
 [Service]
 User=ubuntu
-WorkingDirectory=/home/ubuntu/workspace/interactiveCV
-EnvironmentFile=/home/ubuntu/workspace/interactiveCV/.env
+WorkingDirectory=/home/ubuntu/interactiveCV
+EnvironmentFile=/home/ubuntu/interactiveCV/.env
 
 # gunicorn with eventlet worker is required for SocketIO WebSocket support.
 # -w 1 is mandatory with eventlet — multiple workers break SocketIO's
 # in-memory state (admin_state dict, room routing).
-ExecStart=/home/ubuntu/workspace/interactiveCV/venv/bin/gunicorn \
+ExecStart=/home/ubuntu/interactiveCV/venv/bin/gunicorn \
     --worker-class eventlet \
     -w 1 \
     --bind 0.0.0.0:5000 \
@@ -24,7 +24,7 @@ RestartSec=5
 # Re-register the Telegram webhook on every start using the current
 # public IP. This handles the case where the EC2 instance was restarted
 # and got a new IP (no static/Elastic IP assigned).
-ExecStartPost=/home/ubuntu/workspace/interactiveCV/register_webhook.sh
+ExecStartPost=/home/ubuntu/interactiveCV/register_webhook.sh
 
 [Install]
 WantedBy=multi-user.target
