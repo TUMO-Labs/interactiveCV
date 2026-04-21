@@ -10,33 +10,56 @@ Telegram and can reply directly from your phone using an inline keyboard bot.
 
 ```
 interactiveCV/
-├── main.py           # Flask app, SocketIO events, webhook route
-├── bot.py            # Telegram bot logic: screen builders, command/button handlers
-├── config.py         # Flask + SocketIO app factory
-├── models.py         # SQLAlchemy models: Visitor, Message
-├── run.sh            # One-command startup: ngrok + webhook registration + Flask
+├── main.py                 # Flask app, SocketIO events, Telegram webhook route
+├── bot.py                  # Telegram bot logic: admin screens, commands, callbacks
+├── config.py               # Flask + SocketIO initialization
+├── models.py               # SQLAlchemy models: Visitor, Message
 ├── requirements.txt
-├── .env              # Secrets (never commit this)
+├── .env                    # Secrets (never commit this)
+├── configs/
+│   ├── interactiveCV.service # systemd unit for Flask/Gunicorn app
+│   ├── ngrokCV.service       # systemd unit for ngrok tunnel
+│   └── interactiveCV.conf    # sample reverse-proxy config
 ├── static/
-│   ├── script.js     # Frontend chat logic
-│   ├── style.css     # Styles for frontend
-│   └── arman.JPG     # Profile photo
+│   ├── script.js           # Frontend chat + SocketIO handlers
+│   ├── style.css           # Main site styles
+│   └── arman.JPG           # Profile photo
 ├── templates/
-│   └── index.html    # CV page + chat widget (Tailwind CSS)
+│   └── index.html          # CV page + chat widget (Tailwind CSS)
 └── instance/
-    └── interactive-cv.db   # SQLite database (auto-created)
+   └── interactive-cv.db   # SQLite database (auto-created)
 ```
 
 ---
 
 ## How to run
 
+This project expects Telegram webhooks to reach your local app through ngrok.
+
+### 1) Local run (manual ngrok)
+
+Start Flask app:
+
 ```bash
-chmod +x run.sh   # first time only
-./run.sh
+source venv/bin/activate
+python main.py
 ```
 
-That's it. The script handles everything — see the "run.sh" section below.
+In a second terminal, start ngrok:
+
+```bash
+ngrok http 5000
+```
+
+### 2) Service-based run (recommended on server)
+
+Use the service templates in [configs](configs/):
+- [configs/interactiveCV.service](configs/interactiveCV.service)
+- [configs/ngrokCV.service](configs/ngrokCV.service)
+- [configs/interactiveCV.conf](configs/interactiveCV.conf)
+
+Copy/edit them for your machine paths and user, then enable with `systemctl`.
+This lets ngrok and the app restart automatically on reboot.
 
 ---
 
@@ -47,7 +70,7 @@ TG_BOT_TOKEN=123456789:ABCdef...
 TG_CHAT_ID=987654321
 SECRET_KEY=some-random-string
 FLASK_DEBUG=True
-CORS_ORIGINS=*
+CORE_ORIGINS=*
 ```
 
 **How to get your values:**
@@ -228,21 +251,10 @@ automatically and you don't get a ping. Add or edit entries freely.
 
 ---
 
-## run.sh explained
+## Webhook note
 
-Every time you run `./run.sh` it does the following in order:
+Telegram can only deliver updates to a public HTTPS endpoint. During local
+development, ngrok provides that endpoint and forwards traffic to
+`http://localhost:5000`.
 
-1. Detects your WSL/Linux IP with `hostname -I` — ngrok needs the real
-   network IP on WSL, not `localhost`, to forward correctly
-2. Kills any leftover ngrok process from a previous session
-3. Activates the virtualenv if one exists
-4. Starts ngrok in the background pointing at `<WSL_IP>:5000`
-5. Polls ngrok's local API at `localhost:4040` every second until the
-   tunnel is up (up to 15 seconds)
-6. Reads `TG_BOT_TOKEN` from `.env` and calls Telegram's `setWebhook`
-   with `drop_pending_updates=true` to clear any backlog
-7. Starts Flask in the foreground
-8. On `Ctrl+C`, kills ngrok cleanly before exiting
-
-The URL changes every restart (free ngrok tier) but the script re-registers
-it automatically, so you never need to touch `setWebhook` manually.
+Important: when ngrok URL changes, re-run `setWebhook` with the new URL.
