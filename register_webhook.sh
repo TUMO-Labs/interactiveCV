@@ -34,7 +34,7 @@ fi
 # ── Get current public IP ─────────────────────────────────────────────────────
 # EC2 metadata service (IMDSv1) — works on any EC2 instance without extra tools.
 # Falls back to checkip.amazonaws.com if metadata service is unavailable.
-PUBLIC_IP=$(curl -sf --max-time 3 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null)
+PUBLIC_IP=$(curl http://checkip.amazonaws.com 2>/dev/null)
 
 if [ -z "$PUBLIC_IP" ]; then
     # Fallback: use external IP check service
@@ -46,7 +46,7 @@ if [ -z "$PUBLIC_IP" ]; then
     exit 1
 fi
 
-WEBHOOK_URL="http://${PUBLIC_IP}/telegram/webhook"
+WEBHOOK_URL="https://${PUBLIC_IP}/telegram/webhook"
 
 # ── Register webhook with Telegram ───────────────────────────────────────────
 echo "[webhook] Registering: $WEBHOOK_URL"
