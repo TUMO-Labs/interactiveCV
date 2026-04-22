@@ -1,12 +1,14 @@
 const socket = io();
  
 const chatToggle = document.getElementById('chat-toggle');
-const chatWindow  = document.getElementById('chat-window');
-const closeChat   = document.getElementById('close-chat');
-const regForm     = document.getElementById('registration-interface');
+const chatWindow = document.getElementById('chat-window');
+const closeChat = document.getElementById('close-chat');
+const regForm = document.getElementById('registration-interface');
 const chatInterface = document.getElementById('chat-interface');
-const startChatBtn  = document.getElementById('start-chat');
+const startChatBtn = document.getElementById('start-chat');
 const visitorMsgBtn = document.getElementById('visitor-msg');
+
+let isChating = false;
 
 // Show chat interface after registration
 function showChatInterface(name) {
@@ -18,7 +20,7 @@ function showChatInterface(name) {
 // Register visitor and switch to chat view
 function startChat() {
     const name = document.getElementById('visitor-name').value.trim();
-    const tg   = document.getElementById('visitor-tg').value.trim();
+    const tg = document.getElementById('visitor-tg').value.trim();
  
     if (name === '' || tg === '')
         return;
@@ -28,8 +30,10 @@ function startChat() {
  
     socket.emit('register_visitor', { name, tg });
     showChatInterface(name);
+    document.getElementById('chat-input').focus();
+    isChating = true;
 }
- 
+
 // Append a message bubble to the chat
 function addMessage(message, sender = 'visitor') {
     const messageContainer = document.getElementById('message-container');
@@ -68,10 +72,10 @@ function addMessage(message, sender = 'visitor') {
     messageContainer.appendChild(row);
     messageContainer.scrollTop = messageContainer.scrollHeight;
 }
- 
+
 // Send visitor message
 function sendMessage() {
-    const input   = document.getElementById('chat-input');
+    const input = document.getElementById('chat-input');
     const message = input.value.trim();
     if (message === '')
         return;
@@ -80,7 +84,7 @@ function sendMessage() {
     socket.emit('visitor_message', { message });
     addMessage(message, 'visitor');
 }
- 
+
 // Toggle chat panel open/closed
 function toggleChat() {
     if (chatWindow.classList.contains('hidden')) {
@@ -88,6 +92,10 @@ function toggleChat() {
         setTimeout(() => {
             chatWindow.classList.remove('scale-95', 'opacity-0');
             chatWindow.classList.add('scale-100', 'opacity-100');
+            if (isChating)
+                document.getElementById('chat-input').focus();
+            else
+                document.getElementById('visitor-name').focus();
         }, 10);
     } else {
         chatWindow.classList.remove('scale-100', 'opacity-100');
@@ -95,7 +103,7 @@ function toggleChat() {
         setTimeout(() => chatWindow.classList.add('hidden'), 300);
     }
 }
- 
+
 // Enter key shortcuts
 function startChatOnEnter(event) {
     if (event.key === 'Enter') {
@@ -103,20 +111,20 @@ function startChatOnEnter(event) {
         startChat();
     }
 }
- 
+
 function sendMessageOnEnter(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
     }
 }
- 
+
 // Button listeners
 chatToggle.addEventListener('click', toggleChat);
 closeChat.addEventListener('click', toggleChat);
 startChatBtn.addEventListener('click', startChat);
 visitorMsgBtn.addEventListener('click', sendMessage);
- 
+
 // Server -> client events
 socket.on('new_message', (data) => {
     addMessage(data.text, data.sender);
@@ -132,7 +140,7 @@ socket.on('chat_closed', (data) => {
     messageContainer.appendChild(notice);
     messageContainer.scrollTop = messageContainer.scrollHeight;
  
-    const input  = document.getElementById('chat-input');
+    const input = document.getElementById('chat-input');
     const button = document.getElementById('visitor-msg');
     if (input)  { input.disabled = true;  input.placeholder = 'Chat closed.'; }
     if (button) { button.disabled = true; button.classList.add('opacity-50', 'cursor-not-allowed'); }
@@ -149,4 +157,3 @@ function displayFooterInfo(params) {
 window.addEventListener("load", (event) => {
     displayFooterInfo();
 });
- 
