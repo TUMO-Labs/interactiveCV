@@ -8,14 +8,14 @@ const chatInterface = document.getElementById('chat-interface');
 const startChatBtn  = document.getElementById('start-chat');
 const visitorMsgBtn = document.getElementById('visitor-msg');
 
-// ── Show chat interface after registration
+// Show chat interface after registration
 function showChatInterface(name) {
     regForm.classList.add('hidden');
     chatInterface.classList.remove('hidden');
     document.getElementById('display-name').innerText = name;
 }
 
-// ── Register visitor and switch to chat view
+// Register visitor and switch to chat view
 function startChat() {
     const name = document.getElementById('visitor-name').value.trim();
     const tg   = document.getElementById('visitor-tg').value.trim();
@@ -136,5 +136,17 @@ socket.on('chat_closed', (data) => {
     const button = document.getElementById('visitor-msg');
     if (input)  { input.disabled = true;  input.placeholder = 'Chat closed.'; }
     if (button) { button.disabled = true; button.classList.add('opacity-50', 'cursor-not-allowed'); }
+});
+
+// Display footer info after window loades
+function displayFooterInfo(params) {
+    const span = document.getElementById('footer-info');
+    const year = new Date().getFullYear();
+
+    span.innerText = `© ${year} Arman Arakelyan`;
+}
+
+window.addEventListener("load", (event) => {
+    displayFooterInfo();
 });
  
