@@ -1,260 +1,172 @@
-# Interactive CV — Arman Arakelyan
+# Interactive CV
 
-A personal CV website with a real-time chat widget. Visitors can open a chat,
-leave their Telegram username, and send messages. You receive notifications on
-Telegram and can reply directly from your phone using an inline keyboard bot.
+A personal CV website with an embedded real-time chat widget.
 
----
+When a visitor starts a chat and sends messages, you get them in Telegram. You reply in Telegram, and the reply is pushed back to the visitor instantly via Socket.IO.
 
-## Project structure
+## What’s in the box
 
+- Flask app + Socket.IO realtime chat
+- Telegram webhook receiver at `/telegram/webhook`
+- Optional FAQ auto-replies (keyword-based)
+- SQLite persistence via SQLAlchemy (stored under `instance/`)
+
+## Requirements
+
+- Python 3.10+ (works with 3.11+ as well)
+- A Telegram bot token
+- A Telegram chat to receive messages:
+   - Recommended: a **supergroup with Topics enabled** (forum). The app will create a new topic per visitor using `createForumTopic`.
+   - If topics are not enabled, the app still works but all notifications land in the main chat.
+
+## Quickstart (local)
+
+1) Install dependencies
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
-interactiveCV/
-├── main.py                 # Flask app, SocketIO events, Telegram webhook route
-├── bot.py                  # Telegram bot logic: admin screens, commands, callbacks
-├── config.py               # Flask + SocketIO initialization
-├── models.py               # SQLAlchemy models: Visitor, Message
-├── requirements.txt
-├── .env                    # Secrets (never commit this)
-├── configs/
-│   ├── interactiveCV.service # systemd unit for Flask/Gunicorn app
-│   ├── ngrokCV.service       # systemd unit for ngrok tunnel
-│   └── interactiveCV.conf    # sample reverse-proxy config
-├── static/
-│   ├── script.js           # Frontend chat + SocketIO handlers
-│   ├── style.css           # Main site styles
-│   └── arman.JPG           # Profile photo
-├── templates/
-│   └── index.html          # CV page + chat widget (Tailwind CSS)
-└── instance/
-   └── interactive-cv.db   # SQLite database (auto-created)
+
+2) Create `.env`
+
+Create a `.env` file in the project root:
+
+```env
+TG_BOT_TOKEN=123456789:ABCdef...
+TG_CHAT_ID=-1001234567890
+SECRET_KEY=replace-me
+FLASK_DEBUG=True
+CORE_ORIGINS=*
 ```
 
----
+Notes:
 
-## How to run
+- `TG_CHAT_ID` is the Telegram **group/supergroup id** where messages should go (often starts with `-100...`).
+- `CORE_ORIGINS` controls Socket.IO CORS. Use a concrete origin in production (example: `https://your-domain.com`).
 
-This project expects Telegram webhooks to reach your local app through ngrok.
-
-### 1) Local run (manual ngrok)
-
-Start Flask app:
+3) Run the app
 
 ```bash
 source venv/bin/activate
 python main.py
 ```
 
-In a second terminal, start ngrok:
+The site is available on `http://localhost:5000`.
+
+4) Expose your webhook (ngrok)
+
+Telegram needs a public HTTPS URL to send webhooks.
 
 ```bash
 ngrok http 5000
 ```
 
-### 2) Service-based run (recommended on server)
+Then set your bot webhook (replace `<TOKEN>` and `<NGROK_HTTPS_URL>`):
 
-Use the service templates in [configs](configs/):
+```bash
+curl -s "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+   -d "url=<NGROK_HTTPS_URL>/telegram/webhook"
+```
+
+Whenever your ngrok URL changes, re-run `setWebhook`.
+
+## Telegram setup notes
+
+### Getting `TG_BOT_TOKEN`
+
+Create a bot with @BotFather and copy the token.
+
+### Getting `TG_CHAT_ID`
+
+One common approach:
+
+1) Add your bot to the target group/supergroup.
+2) Send a message in the group that the bot can “see” (e.g. send a command like `/ping` or mention the bot).
+3) Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and find `message.chat.id`.
+
+If you use Topics: enable them in the group settings. The app will attempt to create a dedicated topic per visitor.
+
+## How it works (high level)
+
+- Browser connects via Socket.IO.
+- On `register_visitor`, the server creates a `Visitor` record and (optionally) creates a Telegram topic for them.
+- On each `visitor_message`:
+   - Message is stored in SQLite.
+   - If it matches a FAQ keyword, the bot replies in the chat widget.
+   - Otherwise it is forwarded to Telegram (into the visitor’s topic if available).
+- Replies you send in Telegram are delivered to the app via webhook and then emitted back to the correct visitor session.
+
+## Project structure
+
+```
+.
+├── main.py                   # Flask routes + Socket.IO events
+├── bot.py                    # Telegram helpers + webhook dispatcher + FAQ replies
+├── config.py                 # App + Socket.IO configuration
+├── models.py                 # SQLAlchemy models
+├── requirements.txt
+├── configs/
+│   ├── interactiveCV.service # systemd unit (gunicorn + eventlet)
+│   ├── ngrokCV.service       # systemd unit for ngrok tunnel
+│   └── interactiveCV.conf    # sample reverse-proxy config
+├── templates/index.html      # CV page + embedded chat widget
+├── static/script.js          # Frontend chat logic
+└── instance/interactive-cv.db # SQLite DB (auto-created)
+```
+
+## Production notes
+
+### Database initialization (important)
+
+When you run `python main.py`, the app creates tables automatically. When you run under Gunicorn, that one-time setup code does not execute, so on a fresh server you should initialize the SQLite DB once:
+
+```bash
+source venv/bin/activate
+python - <<'PY'
+from main import app
+from models import db
+
+with app.app_context():
+   db.create_all()
+print('DB initialized')
+PY
+```
+
+### Gunicorn
+
+The included unit file runs:
+
+```bash
+gunicorn --worker-class eventlet -w 1 --bind 127.0.0.1:5000 main:app
+```
+
+### systemd (optional)
+
+Use the templates in [configs](configs/) as a starting point:
+
 - [configs/interactiveCV.service](configs/interactiveCV.service)
 - [configs/ngrokCV.service](configs/ngrokCV.service)
-- [configs/interactiveCV.conf](configs/interactiveCV.conf)
 
-Copy/edit them for your machine paths and user, then enable with `systemctl`.
-This lets ngrok and the app restart automatically on reboot.
+Adjust paths/user, copy to `/etc/systemd/system/`, then:
 
----
-
-## .env file
-
-```env
-TG_BOT_TOKEN=123456789:ABCdef...
-TG_CHAT_ID=987654321
-SECRET_KEY=some-random-string
-FLASK_DEBUG=True
-CORE_ORIGINS=*
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ngrokCV.service interactiveCV.service
 ```
 
-**How to get your values:**
-- `TG_BOT_TOKEN` — message @BotFather → `/newbot` → copy the token
-- `TG_CHAT_ID` — start your bot, send it any message, then visit:
-  `https://api.telegram.org/bot<TOKEN>/getUpdates` → find `chat.id`
+### Reverse proxy
 
----
+If you put the app behind Nginx, make sure WebSocket upgrade headers are enabled for Socket.IO. The sample config in [configs/interactiveCV.conf](configs/interactiveCV.conf) is intentionally minimal; you may need to extend it for WebSockets and TLS.
 
-## Application logic
+## Customization
 
-### Overview
+- FAQ auto-replies are in `FAQ` inside `bot.py`.
+- The chat widget UI and behavior live in `templates/index.html` and `static/script.js`.
 
-```
-Visitor (browser)          Flask + SocketIO          Telegram (your phone)
-      |                          |                          |
-      |-- register_visitor ----->|                          |
-      |                          |-- new visitor notif ---->|
-      |-- visitor_message ------>|                          |
-      |                          |-- FAQ auto-reply ------->| (no ping)
-      |                          |-- or: notification ----->|
-      |<-- new_message (bot) ----|                          |
-      |                          |          |<-- /chats ----|
-      |                          |          |-- chat list ->|
-      |                          |          |<-- tap button-|
-      |                          |          |-- open chat ->|
-      |                          |<-- type reply ---------->|
-      |<-- new_message (you) ----|                          |
-```
+## Troubleshooting
 
-### Step 1 — Visitor opens the chat widget
-
-The chat button in the bottom-right corner opens a small panel. Before they
-can type, they must fill in two fields: their full name and their Telegram
-username. This is intentional — you need a way to reach them after they
-leave the page, and Telegram is the only contact method used in this project.
-
-### Step 2 — Registration (`register_visitor` SocketIO event)
-
-When the visitor submits the form, the browser emits `register_visitor` with
-`{ name, tg }`. Flask receives it and:
-
-1. Strips whitespace, ensures the `@` prefix is present
-2. Creates a `Visitor` row in the database with their name, tg username,
-   and their SocketIO session ID (`request.sid`) as `session_id`
-3. Calls `join_room(request.sid)` — this is how replies are targeted back
-   to exactly this browser tab later
-4. Sends you a Telegram notification with a `[💬 Chat with Name]` button
-
-### Step 3 — Visitor sends a message (`visitor_message` SocketIO event)
-
-Every message the visitor types goes through `on_visitor_message` in `main.py`:
-
-1. Look up their `Visitor` row by `session_id=request.sid`
-2. Save the message to the `Message` table with `sender='visitor'`
-3. Run it through the FAQ bot — if a keyword matches, save a bot reply
-   and emit it back to the visitor. Stop here (no Telegram ping)
-4. If no FAQ match: increment `unread_count`, then check `admin_state`
-   to see if you're already viewing this conversation in Telegram
-5. If you're viewing it: send the message inline (no buttons)
-6. If you're not: send a notification with `[Open chat]` and `[All chats]` buttons
-
-### Step 4 — You manage conversations from Telegram
-
-All admin interaction goes through the Telegram bot. There are two input types:
-
-**Inline button taps** (`callback_query`) — handled in `handle_inline_button`:
-- `open:<id>` — sets `admin_state[your_tg_id] = visitor_id`, clears unread
-  badge, edits the message in place to show the conversation view
-- `close:<id>` — marks visitor `is_closed=True`, emits `chat_closed` to the
-  visitor's browser, returns to the chats list
-- `delete:<id>` — deletes visitor and messages related to him, emits `chat_closed` to the
-  visitor's browser (if not closed already), returns to the chats list
-- `back` / `chats` — clears `admin_state`, shows the chats list
-
-**Text messages** — handled in `handle_text_message`:
-- If it starts with `/` → route to `handle_command`
-- Otherwise → look up `admin_state` to find the active session, save a
-  `Message` with `sender='you'`, emit `new_message` to the visitor's
-  browser via `socketio.emit(..., room=visitor.session_id)`
-
-**Commands:**
-| Command | Action |
-|---------|--------|
-| `/start` or `/help` | Show usage instructions |
-| `/chats` or `/back` | Show active conversations list |
-| `/close` | Close current conversation |
-| `/delete` | Delete current conversation |
-
-### Step 5 — Your reply reaches the visitor
-
-When you type a reply in Telegram, Flask receives it via the webhook, saves
-it to the DB, then calls:
-
-```python
-socketio.emit('new_message', {'sender': 'you', 'text': text}, room=visitor.session_id)
-```
-
-The visitor's browser is subscribed to a SocketIO room named after their
-`session_id`. The message lands there instantly and `script.js` appends it
-to the chat window as a left-aligned bubble labelled "✏️ Arman".
-
-### Step 6 — Visitor disconnects
-
-When the visitor closes their tab, the `disconnect` SocketIO event fires.
-Flask finds their `Visitor` row by `session_id` and sets `is_closed=True`.
-This removes them from the active chats list so ghost sessions don't pile up.
-
----
-
-## admin_state explained
-
-`admin_state` is a plain Python dict in memory:
-
-```python
-admin_state: dict = {}
-# { "987654321": 3 }   ← your telegram chat_id → visitor.id you're viewing
-# { "987654321": None } ← you're on the chats list, not in any session
-```
-
-It tracks which conversation you currently have open in Telegram. This is
-used for two things:
-
-1. **Routing your replies** — when you type plain text, Flask looks up
-   `admin_state[your_id]` to know which visitor to send it to
-2. **Smart notifications** — if a new message arrives from the visitor
-   you're currently viewing, you get a plain text ping instead of a
-   notification with buttons (less noise)
-
-Because it lives in memory it resets on every server restart. That's fine —
-it just means you need to `/chats` again after restarting.
-
----
-
-## FAQ bot
-
-The FAQ dict in `bot.py` maps keywords to automatic replies:
-
-```python
-FAQ = {
-    'stack':     'I mainly work with C/C++, Python, and Flask.',
-    'hire':      "I'm open to new opportunities...",
-    'available': "I'm open to new opportunities...",
-    ...
-}
-```
-
-Every incoming visitor message is checked against this before you're notified.
-If a keyword is found in the message (case-insensitive), the bot replies
-automatically and you don't get a ping. Add or edit entries freely.
-
----
-
-## Data model
-
-### Visitor
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| `id` | Integer PK | Stable identifier used in Telegram button `callback_data` (`open:3`) and as FK in Message |
-| `full_name` | String | Display name shown in the chats list and conversation header |
-| `tg_username` | String | Always stored as `@handle` — how you reach them after they leave |
-| `session_id` | String | SocketIO `request.sid` — used to push replies to the right browser tab |
-| `started_at` | DateTime | When they registered — shown as "Started X ago" |
-| `last_activity` | DateTime | Updated on every message — used to sort chats list |
-| `is_closed` | Boolean | Soft delete — hides session from active list without losing history |
-| `unread_count` | Integer | 🔴 badge count — incremented on new messages, cleared when you open the chat |
-
-### Message
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| `id` | Integer PK | Standard PK |
-| `text` | Text | Message body |
-| `sender` | String | `'visitor'`, `'you'`, or `'bot'` — determines bubble style and label |
-| `visitor_id` | FK → Visitor | Links message to its conversation |
-| `created_at` | DateTime | Ordering — conversation history is `visitor.messages[-20:]` |
-
----
-
-## Webhook note
-
-Telegram can only deliver updates to a public HTTPS endpoint. During local
-development, ngrok provides that endpoint and forwards traffic to
-`http://localhost:5000`.
-
-Important: when ngrok URL changes, re-run `setWebhook` with the new URL.
+- No Telegram messages: verify `TG_BOT_TOKEN`, `TG_CHAT_ID`, and `setWebhook` points to `/telegram/webhook`.
+- `createForumTopic` fails: ensure the target is a supergroup with Topics enabled and the bot has admin rights.
+- Socket.IO blocked by CORS: set `CORE_ORIGINS` to your site origin (not `*`) when deploying behind a real domain.
