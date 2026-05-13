@@ -9,7 +9,6 @@ class Visitor(db.Model):
 
     id            = db.Column(db.Integer, primary_key=True)
     full_name     = db.Column(db.String(100), nullable=False)
-    tg_username   = db.Column(db.String(100), nullable=False)
     session_id    = db.Column(db.String(100), nullable=False)
     tg_thread_id  = db.Column(db.Integer, nullable=True)
     started_at    = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

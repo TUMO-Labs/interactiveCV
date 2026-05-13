@@ -40,19 +40,13 @@ def on_disconnect():
 @socketIO.on('register_visitor')
 def on_register(data: dict):
     name: str = data.get('name', '').strip()
-    tg: str   = data.get('tg', '').strip()
 
-    if not name or not tg:
-        return
-    if not tg.startswith('@'):
-        tg = '@' + tg
-    if len(tg) <= 1:
+    if not name:
         return
 
-    thread_id = create_topic(f'{name}  {tg}')
+    thread_id = create_topic(f'{name}')
     new_visitor = Visitor(
         full_name=name,
-        tg_username=tg,
         session_id=request.sid,
         tg_thread_id=thread_id,
     )
@@ -60,12 +54,11 @@ def on_register(data: dict):
     db.session.commit()
 
     join_room(request.sid)
-    print(f'[register] {tg} ({name}) sid={request.sid} thread={thread_id}')
+    print(f'[register] {name} sid={request.sid} thread={thread_id}')
 
     tg_send(
         f'🟢 <b>New visitor started a chat</b>\n\n'
         f'<b>Name:</b> {name}\n'
-        f'<b>Telegram:</b> {tg}\n\n'
         f'<i>Reply here — your messages will go directly to this visitor.</i>',
         thread_id=thread_id,
     )

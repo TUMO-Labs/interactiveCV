@@ -20,15 +20,13 @@ function showChatInterface(name) {
 // Register visitor and switch to chat view
 function startChat() {
     const name = document.getElementById('visitor-name').value.trim();
-    const tg = document.getElementById('visitor-tg').value.trim();
  
-    if (name === '' || tg === '')
+    if (name === '')
         return;
  
     document.getElementById('visitor-name').value = '';
-    document.getElementById('visitor-tg').value   = '';
  
-    socket.emit('register_visitor', { name, tg });
+    socket.emit('register_visitor', { name });
     showChatInterface(name);
     document.getElementById('chat-input').focus();
     isChating = true;
@@ -128,22 +126,6 @@ visitorMsgBtn.addEventListener('click', sendMessage);
 // Server -> client events
 socket.on('new_message', (data) => {
     addMessage(data.text, data.sender);
-});
-
-socket.on('chat_closed', (data) => {
-    const messageContainer = document.getElementById('message-container');
-    if (!messageContainer) return;
-
-    const notice = document.createElement('div');
-    notice.className = 'text-center text-xs text-slate-400 py-2';
-    notice.textContent = data.message || 'This conversation has been closed.';
-    messageContainer.appendChild(notice);
-    messageContainer.scrollTop = messageContainer.scrollHeight;
- 
-    const input = document.getElementById('chat-input');
-    const button = document.getElementById('visitor-msg');
-    if (input)  { input.disabled = true;  input.placeholder = 'Chat closed.'; }
-    if (button) { button.disabled = true; button.classList.add('opacity-50', 'cursor-not-allowed'); }
 });
 
 // Display footer info after window loades
