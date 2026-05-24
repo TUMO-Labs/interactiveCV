@@ -5,7 +5,8 @@ from flask_socketio import emit, join_room
 
 from config import app, socketIO
 from models import Visitor, Message, db
-from bot import handle_text_message, tg_send, create_topic, bot_reply
+from bot import handle_text_message, tg_send, create_topic
+from ai import ai_reply
 
 db.init_app(app)
 
@@ -40,11 +41,11 @@ def on_disconnect():
 @socketIO.on('register_visitor')
 def on_register(data: dict):
     name: str = data.get('name', '').strip()
-
     if not name:
         return
 
-    thread_id = create_topic(f'{name}')
+    thread_id = create_topic(name)
+
     new_visitor = Visitor(
         full_name=name,
         session_id=request.sid,
@@ -58,8 +59,8 @@ def on_register(data: dict):
 
     tg_send(
         f'🟢 <b>New visitor started a chat</b>\n\n'
-        f'<b>Name:</b> {name}\n'
-        f'<i>Reply here — your messages will go directly to this visitor.</i>',
+        f'<b>Name:</b> {name}\n\n'
+        f'<i>Reply here — your messages go directly to this visitor.</i>',
         thread_id=thread_id,
     )
 
@@ -80,14 +81,17 @@ def on_visitor_message(data: dict):
     db.session.add(new_msg)
     db.session.commit()
 
-    auto_reply = bot_reply(message)
-    if auto_reply:
-        bot_msg = Message(visitor_id=visitor.id, sender='bot', text=auto_reply)
+    answer = ai_reply(message)
+    print(answer)
+
+    if answer:
+        bot_msg = Message(visitor_id=visitor.id, sender='bot', text=answer)
         db.session.add(bot_msg)
         db.session.commit()
+
         emit('new_message', {
             'sender':     'bot',
-            'text':       auto_reply,
+            'text':       answer,
             'created_at': bot_msg.created_at.isoformat(),
         })
         return
@@ -95,8 +99,20 @@ def on_visitor_message(data: dict):
     visitor.unread_count += 1
     db.session.commit()
 
+    holding_text = "I don't have a ready answer for that one — I've flagged it for Arman and he'll reply personally."
+    holding_msg = Message(visitor_id=visitor.id, sender='bot', text=holding_text)
+    db.session.add(holding_msg)
+    db.session.commit()
+
+    emit('new_message', {
+        'sender':     'bot',
+        'text':       holding_text,
+        'created_at': holding_msg.created_at.isoformat(),
+    })
+
     tg_send(
-        f'<b>{visitor.full_name}:</b> {message}',
+        f'❓ <b>{visitor.full_name}</b> asked something the AI couldn\'t answer:\n\n'
+        f'<i>{message}</i>',
         thread_id=visitor.tg_thread_id,
     )
 
