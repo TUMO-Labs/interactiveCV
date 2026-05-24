@@ -7,8 +7,87 @@ const regForm = document.getElementById('registration-interface');
 const chatInterface = document.getElementById('chat-interface');
 const startChatBtn = document.getElementById('start-chat');
 const visitorMsgBtn = document.getElementById('visitor-msg');
+const voiceBtn = document.getElementById('voice-record-btn');
+const micIcon = document.getElementById('mic-icon');
+const micPulse = document.getElementById('mic-pulse');
+const chatInput = document.getElementById('chat-input');
 
 let isChating = false;
+let recognition = null;
+let isRecording = false;
+
+// Check browser compatibility
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    
+    recognition.continuous = true;      // Keep listening even if the user pauses
+    recognition.interimResults = true;  // Show live predictions as they speak
+    recognition.lang = 'en-US';         // Adjust language choice here if preferred
+
+    recognition.onresult = (event) => {
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+            }
+        }
+        
+        if (finalTranscript) {
+            if (chatInput.value.trim() !== '') {
+                chatInput.value = chatInput.value.trim() + ' ' + finalTranscript.trim();
+            } else {
+                chatInput.value = finalTranscript.trim();
+            }
+        }
+    };
+
+    recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        stopVoiceRecording();
+    };
+
+    recognition.onend = () => {
+        if (isRecording) stopVoiceRecording();
+    };
+} else {
+    // Hide or disable the option if the user's platform doesn't support it
+    voiceBtn.classList.add('hidden');
+}
+
+function startVoiceRecording() {
+    isRecording = true;
+    recognition.start();
+
+    // UI Updates: Switch styles to active recording indicators
+    micPulse.classList.remove('hidden');
+    voiceBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+    voiceBtn.classList.add('bg-red-500', 'text-white', 'hover:bg-red-600');
+}
+
+function stopVoiceRecording() {
+    isRecording = false;
+    recognition.stop();
+
+    // UI Updates: Revert elements back to default states
+    micPulse.classList.add('hidden');
+    voiceBtn.classList.remove('bg-red-500', 'text-white', 'hover:bg-red-600');
+    voiceBtn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+
+    // Trigger the existing message submission logic if text was captured
+    setTimeout(() => {
+        sendMessage();
+    }, 150);
+}
+
+// Toggle recording handler execution
+voiceBtn.addEventListener('click', () => {
+    if (!isRecording) {
+        startVoiceRecording();
+    } else {
+        stopVoiceRecording();
+    }
+});
 
 // Show chat interface after registration
 function showChatInterface(name) {
