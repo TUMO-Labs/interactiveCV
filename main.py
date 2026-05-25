@@ -6,7 +6,7 @@ from flask_socketio import emit, join_room
 from config import app, socketIO
 from models import Visitor, Message, db
 from bot import handle_text_message, tg_send, create_topic
-from ai import ai_reply, transcribe_any_language
+from ai import ai_reply, transcribe_any_language, RATE_LIMITED, ERRORED
 
 db.init_app(app)
 
@@ -65,6 +65,68 @@ def on_register(data: dict):
     )
 
 
+def _save_and_emit(visitor, text: str, sender: str):
+    msg = Message(visitor_id=visitor.id, sender=sender, text=text)
+    db.session.add(msg)
+    db.session.commit()
+    emit('new_message', {
+        'sender':     sender,
+        'text':       text,
+        'created_at': msg.created_at.isoformat(),
+    })
+
+
+def process_message(visitor, message: str):
+    new_msg = Message(text=message, visitor_id=visitor.id, sender='visitor')
+    visitor.last_activity = datetime.utcnow()
+    db.session.add(new_msg)
+    db.session.commit()
+
+    answer = ai_reply(message)
+
+    if answer == RATE_LIMITED:
+        _save_and_emit(
+            visitor,
+            "The AI assistant is temporarily unavailable — the rate limit has been reached. Arman has been notified and will reply personally.",
+            'bot',
+        )
+        tg_send(
+            f'⚠️ <b>Rate limit hit</b> while answering <b>{visitor.full_name}</b>:\n\n'
+            f'<i>{message}</i>',
+            thread_id=visitor.tg_thread_id,
+        )
+        return
+
+    if answer == ERRORED:
+        _save_and_emit(
+            visitor,
+            "Something went wrong on my end — Arman has been notified and will reply personally.",
+            'bot',
+        )
+        tg_send(
+            f'🔴 <b>AI error</b> while answering <b>{visitor.full_name}</b>:\n\n'
+            f'<i>{message}</i>',
+            thread_id=visitor.tg_thread_id,
+        )
+        return
+
+    if answer:
+        _save_and_emit(visitor, answer, 'bot')
+        return
+
+    visitor.unread_count += 1
+    db.session.commit()
+
+    holding_text = "I don't have a ready answer for that one — I've flagged it for Arman and he'll reply personally."
+    _save_and_emit(visitor, holding_text, 'bot')
+
+    tg_send(
+        f'❓ <b>{visitor.full_name}</b> asked something the AI couldn\'t answer:\n\n'
+        f'<i>{message}</i>',
+        thread_id=visitor.tg_thread_id,
+    )
+
+
 @socketIO.on('visitor_message')
 def on_visitor_message(data: dict):
     message: str = data.get('message', '').strip()
@@ -76,45 +138,7 @@ def on_visitor_message(data: dict):
         emit('error', {'message': 'Session not found. Please refresh and register again.'})
         return
 
-    new_msg = Message(text=message, visitor_id=visitor.id, sender='visitor')
-    visitor.last_activity = datetime.utcnow()
-    db.session.add(new_msg)
-    db.session.commit()
-
-    answer = ai_reply(message)
-    print(answer)
-
-    if answer:
-        bot_msg = Message(visitor_id=visitor.id, sender='bot', text=answer)
-        db.session.add(bot_msg)
-        db.session.commit()
-
-        emit('new_message', {
-            'sender':     'bot',
-            'text':       answer,
-            'created_at': bot_msg.created_at.isoformat(),
-        })
-        return
-
-    visitor.unread_count += 1
-    db.session.commit()
-
-    holding_text = "I don't have a ready answer for that one — I've flagged it for Arman and he'll reply personally."
-    holding_msg = Message(visitor_id=visitor.id, sender='bot', text=holding_text)
-    db.session.add(holding_msg)
-    db.session.commit()
-
-    emit('new_message', {
-        'sender':     'bot',
-        'text':       holding_text,
-        'created_at': holding_msg.created_at.isoformat(),
-    })
-
-    tg_send(
-        f'❓ <b>{visitor.full_name}</b> asked something the AI couldn\'t answer:\n\n'
-        f'<i>{message}</i>',
-        thread_id=visitor.tg_thread_id,
-    )
+    process_message(visitor, message)
 
 
 @socketIO.on('visitor_voice_message')
@@ -123,19 +147,17 @@ def on_visitor_voice_message(audio_data: bytes):
     if not visitor:
         return
 
-    # Let Gemini figure out the language and extract the text
     transcribed_text = transcribe_any_language(audio_data)
 
-    if transcribed_text:
-        # Send the transcript back to the visitor UI log bubble
+    if not transcribed_text:
         emit('new_message', {
-            'sender': 'visitor',
-            'text': transcribed_text
+            'sender': 'bot',
+            'text':   "Sorry, I couldn't make out what you said. Please try again.",
         })
-        
-        # Directly pass it to your existing message logic 
-        # (This triggers Gemini's actual reply, saves to DB, and texts Telegram!)
-        on_visitor_message({'message': transcribed_text})
+        return
+
+    emit('new_message', {'sender': 'visitor', 'text': transcribed_text})
+    process_message(visitor, transcribed_text)
 
 
 if __name__ == '__main__':

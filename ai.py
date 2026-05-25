@@ -1,6 +1,5 @@
 import os
 import requests
-import base64
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,102 +10,106 @@ GEMINI_API     = 'https://generativelanguage.googleapis.com/v1beta/models/gemini
 with open("system_prompt.txt", "r", encoding="utf-8") as file:
     SYSTEM_INSTRUCTIONS = file.read()
 
+RATE_LIMITED = '__RATE_LIMITED__'
+ERRORED      = '__ERRORED__'
 
+# Shared helpers
+def _post(payload: dict, timeout: int = 15) -> dict | None:
+    try:
+        r = requests.post(f'{GEMINI_API}?key={GEMINI_API_KEY}', json=payload, timeout=timeout)
+        return r.json()
+    except Exception as e:
+        print(f'[AI] request error: {e}')
+        return None
+ 
+def _extract_text(data: dict) -> str:
+    return (
+        data
+        .get('candidates', [{}])[0]
+        .get('content', {})
+        .get('parts', [{}])[0]
+        .get('text', '')
+        .strip()
+    )
+ 
+def _check_error(data: dict) -> str | None:
+    error = data.get('error', {})
+    if not error:
+        return None
+    code    = error.get('code')
+    status  = error.get('status', '')
+    message = error.get('message', '')
+    print(f'[AI] API error {code} {status}: {message[:120]}')
+    if code == 429 or status == 'RESOURCE_EXHAUSTED':
+        return RATE_LIMITED
+    return ERRORED
+ 
+ 
+# Text reply
+def ai_reply(user_message: str) -> str | None:
+    if not GEMINI_API_KEY:
+        print('[AI] No API key configured')
+        return None
+ 
+    payload = {
+        'system_instruction': {'parts': [{'text': SYSTEM_INSTRUCTIONS}]},
+        'contents': [{'role': 'user', 'parts': [{'text': user_message}]}],
+        'generationConfig': {'temperature': 0.4, 'maxOutputTokens': 1024},
+    }
+ 
+    data = _post(payload)
+    if data is None:
+        return None
+ 
+    sentinel = _check_error(data)
+    if sentinel == RATE_LIMITED:
+        return RATE_LIMITED
+    if sentinel:
+        return ERRORED
+ 
+    text = _extract_text(data)
+    if not text or '__FALLBACK__' in text:
+        return None
+ 
+    return text
+ 
+ 
+# Audio transcription
 def transcribe_any_language(audio_bytes: bytes) -> str | None:
     if not GEMINI_API_KEY:
+        print('[AI] No API key configured')
         return None
-
-    # Encode raw audio data to base64
-    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-
+ 
+    import base64
+    audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+ 
     payload = {
-        'contents': [
-            {
-                'parts': [
-                    {
-                        'text': (
-                            "Listen carefully to this audio track. Identify the language spoken "
-                            "(e.g., English, Armenian, Russian, etc.) and transcribe it exactly "
-                            "as spoken into its native script. Output ONLY the raw transcription text. "
-                            "Do not translate it to English, do not explain it, and do not add notes."
-                        )
-                    },
-                    {
-                        'inlineData': {
-                            'mimeType': 'audio/webm',
-                            'data': audio_base64
-                        }
+        'contents': [{
+            'parts': [
+                {
+                    'text': (
+                        'Listen carefully to this audio. Identify the language spoken '
+                        'and transcribe it exactly as spoken in its native script. '
+                        'Output ONLY the raw transcription text, nothing else.'
+                    )
+                },
+                {
+                    'inlineData': {
+                        'mimeType': 'audio/webm',
+                        'data':     audio_b64,
                     }
-                ]
-            }
-        ],
-        'generationConfig': {
-            'temperature': 0.0,  # 0.0 forces literal accuracy over creative variation
-        }
+                }
+            ]
+        }],
+        'generationConfig': {'temperature': 0.0},
     }
-
-    try:
-        r = requests.post(f'{GEMINI_API}?key={GEMINI_API_KEY}', json=payload, timeout=20)
-        data = r.json()
-        text = data['candidates'][0]['content']['parts'][0]['text'].strip()
-        return text
-    except Exception as e:
-        print(f'[Gemini Audio Error] {e}')
+ 
+    data = _post(payload, timeout=20)
+    if data is None:
         return None
-
-
-def ai_reply(user_message: str) -> str | None:
-    """
-    Ask Gemini about Arman.
-
-    Returns:
-        str   — the AI's answer  (show to visitor)
-        None  — AI said __FALLBACK__ or the call failed  (escalate to Telegram)
-    """
-    if not GEMINI_API_KEY:
-        print('[AI] No Gemini API key configured')
+ 
+    sentinel = _check_error(data)
+    if sentinel:
         return None
-
-    payload = {
-        'system_instruction': {
-            'parts': [{'text': SYSTEM_INSTRUCTIONS}]
-        },
-        'contents': [
-            {'role': 'user', 'parts': [{'text': user_message}]}
-        ],
-        'generationConfig': {
-            'temperature':     0.4,
-            'maxOutputTokens': 1024,
-        }
-    }
-
-    try:
-        r = requests.post(
-            f'{GEMINI_API}?key={GEMINI_API_KEY}',
-            json=payload,
-            timeout=15,
-        )
-        data = r.json()
-
-        # surface API-level errors clearly
-        if 'error' in data:
-            print(f'[AI] API error: {data["error"]}')
-            return None
-
-        text: str = (
-            data
-            .get('candidates', [{}])[0]
-            .get('content', {})
-            .get('parts', [{}])[0]
-            .get('text', '')
-            .strip()
-        )
-
-        if not text or '__FALLBACK__' in text:
-            return None
-
-        return text
-
-    except Exception as e:
-        print(f'[AI] Gemini error: {e}')
-        return None
+ 
+    return _extract_text(data) or None
