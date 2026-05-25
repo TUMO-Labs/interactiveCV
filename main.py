@@ -6,7 +6,7 @@ from flask_socketio import emit, join_room
 from config import app, socketIO
 from models import Visitor, Message, db
 from bot import handle_text_message, tg_send, create_topic
-from ai import ai_reply
+from ai import ai_reply, transcribe_any_language
 
 db.init_app(app)
 
@@ -115,6 +115,27 @@ def on_visitor_message(data: dict):
         f'<i>{message}</i>',
         thread_id=visitor.tg_thread_id,
     )
+
+
+@socketIO.on('visitor_voice_message')
+def on_visitor_voice_message(audio_data: bytes):
+    visitor = Visitor.query.filter_by(session_id=request.sid).first()
+    if not visitor:
+        return
+
+    # Let Gemini figure out the language and extract the text
+    transcribed_text = transcribe_any_language(audio_data)
+
+    if transcribed_text:
+        # Send the transcript back to the visitor UI log bubble
+        emit('new_message', {
+            'sender': 'visitor',
+            'text': transcribed_text
+        })
+        
+        # Directly pass it to your existing message logic 
+        # (This triggers Gemini's actual reply, saves to DB, and texts Telegram!)
+        on_visitor_message({'message': transcribed_text})
 
 
 if __name__ == '__main__':

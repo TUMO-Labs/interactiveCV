@@ -1,5 +1,6 @@
 import os
 import requests
+import base64
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,6 +10,49 @@ GEMINI_API     = 'https://generativelanguage.googleapis.com/v1beta/models/gemini
 
 with open("system_prompt.txt", "r", encoding="utf-8") as file:
     SYSTEM_INSTRUCTIONS = file.read()
+
+
+def transcribe_any_language(audio_bytes: bytes) -> str | None:
+    if not GEMINI_API_KEY:
+        return None
+
+    # Encode raw audio data to base64
+    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+
+    payload = {
+        'contents': [
+            {
+                'parts': [
+                    {
+                        'text': (
+                            "Listen carefully to this audio track. Identify the language spoken "
+                            "(e.g., English, Armenian, Russian, etc.) and transcribe it exactly "
+                            "as spoken into its native script. Output ONLY the raw transcription text. "
+                            "Do not translate it to English, do not explain it, and do not add notes."
+                        )
+                    },
+                    {
+                        'inlineData': {
+                            'mimeType': 'audio/webm',
+                            'data': audio_base64
+                        }
+                    }
+                ]
+            }
+        ],
+        'generationConfig': {
+            'temperature': 0.0,  # 0.0 forces literal accuracy over creative variation
+        }
+    }
+
+    try:
+        r = requests.post(f'{GEMINI_API}?key={GEMINI_API_KEY}', json=payload, timeout=20)
+        data = r.json()
+        text = data['candidates'][0]['content']['parts'][0]['text'].strip()
+        return text
+    except Exception as e:
+        print(f'[Gemini Audio Error] {e}')
+        return None
 
 
 def ai_reply(user_message: str) -> str | None:

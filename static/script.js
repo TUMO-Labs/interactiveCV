@@ -11,83 +11,114 @@ const voiceBtn = document.getElementById('voice-record-btn');
 const micIcon = document.getElementById('mic-icon');
 const micPulse = document.getElementById('mic-pulse');
 const chatInput = document.getElementById('chat-input');
+const visitorNameInput = document.getElementById('visitor-name');
 
 let isChating = false;
-let recognition = null;
 let isRecording = false;
+let mediaRecorder = null;
+let audioChunks = [];
 
-// Check browser compatibility
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
+// TEXT-TO-SPEECH (SPEAK BACK) ENGINE
+function speakText(text) {
+    if (!('speechSynthesis' in window)) {
+        console.warn('Text-to-speech not supported in this browser.');
+        return;
+    }
+
+    // Cancel any speech currently playing to avoid overlapping audio
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    // Optional configuration properties
+    utterance.rate = 1.0;  // Speed (0.1 to 10)
+    utterance.pitch = 1.0; // Pitch (0 to 2)
+
+    // Attempt auto-detection of text language for natural pronunciation accents
+    // Default to 'en-US' if text character analysis is simple or fails
+    utterance.lang = 'en-US'; 
     
-    recognition.continuous = true;      // Keep listening even if the user pauses
-    recognition.interimResults = true;  // Show live predictions as they speak
-    recognition.lang = 'en-US';         // Adjust language choice here if preferred
+    // Quick validation regex checking for Cyrillic/Armenian alphabet blocks
+    if (/[\u0530-\u058F]/.test(text)) utterance.lang = 'hy-AM'; // Armenian
+    else if (/[\u0400-\u04FF]/.test(text)) utterance.lang = 'ru-RU'; // Russian
 
-    recognition.onresult = (event) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
-            }
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+        // Look for native matching voice lines locally saved on operating systems
+        const preferredVoice = voices.find(voice => 
+            voice.lang.startsWith(utterance.lang.split('-')[0])
+        );
+        if (preferredVoice) {
+            utterance.voice = preferredVoice;
         }
-        
-        if (finalTranscript) {
-            if (chatInput.value.trim() !== '') {
-                chatInput.value = chatInput.value.trim() + ' ' + finalTranscript.trim();
-            } else {
-                chatInput.value = finalTranscript.trim();
-            }
-        }
-    };
+    }
 
-    recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        stopVoiceRecording();
-    };
-
-    recognition.onend = () => {
-        if (isRecording) stopVoiceRecording();
-    };
-} else {
-    // Hide or disable the option if the user's platform doesn't support it
-    voiceBtn.classList.add('hidden');
+    window.speechSynthesis.speak(utterance);
 }
 
-function startVoiceRecording() {
-    isRecording = true;
-    recognition.start();
 
-    // UI Updates: Switch styles to active recording indicators
-    micPulse.classList.remove('hidden');
-    voiceBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
-    voiceBtn.classList.add('bg-red-500', 'text-white', 'hover:bg-red-600');
+// MULTILINGUAL SPEECH-TO-TEXT (MEDIA RECORDER)
+async function startVoiceRecording() {
+    audioChunks = [];
+    try {
+        // Request browser microphone hardware authorization access
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
+        };
+
+        mediaRecorder.onstop = () => {
+            // Package the audio chunks as a standard webm audio file payload
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // Turn off the active microphone hardware system indicator light
+            stream.getTracks().forEach(track => track.stop());
+
+            // Reset UI record buttons back to default slate values
+            micPulse.classList.add('hidden');
+            voiceBtn.className = "bg-slate-100 text-slate-600 p-2 rounded-lg hover:bg-slate-200 transition shadow-sm relative group";
+            
+            // Transmit the binary audio stream over SocketIO to the Flask server
+            socket.emit('visitor_voice_message', audioBlob);
+        };
+
+        // If bot is currently speaking, silence it immediately before user talks
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+        mediaRecorder.start();
+        isRecording = true;
+
+        // Visual UI record states activation triggers
+        micPulse.classList.remove('hidden');
+        voiceBtn.className = "bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition shadow-sm relative group";
+
+    } catch (err) {
+        console.error("Microphone hardware block initialization exception:", err);
+        alert("Microphone connection access error. Please inspect dashboard site permissions configuration.");
+    }
 }
 
 function stopVoiceRecording() {
-    isRecording = false;
-    recognition.stop();
-
-    // UI Updates: Revert elements back to default states
-    micPulse.classList.add('hidden');
-    voiceBtn.classList.remove('bg-red-500', 'text-white', 'hover:bg-red-600');
-    voiceBtn.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
-
-    // Trigger the existing message submission logic if text was captured
-    setTimeout(() => {
-        sendMessage();
-    }, 150);
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+    }
 }
 
-// Toggle recording handler execution
-voiceBtn.addEventListener('click', () => {
-    if (!isRecording) {
-        startVoiceRecording();
-    } else {
-        stopVoiceRecording();
-    }
-});
+if (voiceBtn) {
+    voiceBtn.addEventListener('click', () => {
+        if (!isRecording) {
+            startVoiceRecording();
+        } else {
+            stopVoiceRecording();
+        }
+    });
+}
+
 
 // Show chat interface after registration
 function showChatInterface(name) {
@@ -98,16 +129,16 @@ function showChatInterface(name) {
 
 // Register visitor and switch to chat view
 function startChat() {
-    const name = document.getElementById('visitor-name').value.trim();
+    const name = visitorNameInput.value.trim();
  
     if (name === '')
         return;
  
-    document.getElementById('visitor-name').value = '';
+    visitorNameInput.value = '';
  
     socket.emit('register_visitor', { name });
     showChatInterface(name);
-    document.getElementById('chat-input').focus();
+    chatInput.focus();
     isChating = true;
 }
 
@@ -118,7 +149,6 @@ function addMessage(message, sender = 'visitor') {
         return;
  
     const isVisitor = sender === 'visitor';
- 
     const row = document.createElement('div');
     row.className = `flex ${isVisitor ? 'justify-end' : 'justify-start'}`;
  
@@ -152,12 +182,11 @@ function addMessage(message, sender = 'visitor') {
 
 // Send visitor message
 function sendMessage() {
-    const input = document.getElementById('chat-input');
-    const message = input.value.trim();
+    const message = chatInput.value.trim();
     if (message === '')
         return;
  
-    input.value = '';
+    chatInput.value = '';
     socket.emit('visitor_message', { message });
     addMessage(message, 'visitor');
 }
@@ -170,9 +199,9 @@ function toggleChat() {
             chatWindow.classList.remove('scale-95', 'opacity-0');
             chatWindow.classList.add('scale-100', 'opacity-100');
             if (isChating)
-                document.getElementById('chat-input').focus();
+                chatInput.focus();
             else
-                document.getElementById('visitor-name').focus();
+                visitorNameInput.focus();
         }, 10);
     } else {
         chatWindow.classList.remove('scale-100', 'opacity-100');
@@ -202,19 +231,34 @@ closeChat.addEventListener('click', toggleChat);
 startChatBtn.addEventListener('click', startChat);
 visitorMsgBtn.addEventListener('click', sendMessage);
 
-// Server -> client events
+// Keydown event bindings for registration layout and conversation frame
+visitorNameInput.addEventListener('keydown', startChatOnEnter);
+chatInput.addEventListener('keydown', sendMessageOnEnter);
+
+
+// SOCKET SERVER INBOUND EVENTS
 socket.on('new_message', (data) => {
     addMessage(data.text, data.sender);
+
+    // Only speak if the message originates from the backend Bot or from Arman ('you')
+    // Temporarly disabled
+    // if (data.sender === 'bot' || data.sender === 'you') {
+    //     speakText(data.text);
+    // }
 });
 
-// Display footer info after window loades
-function displayFooterInfo(params) {
+function displayFooterInfo() {
     const span = document.getElementById('footer-info');
-    const year = new Date().getFullYear();
-
-    span.innerText = `© ${year} Arman Arakelyan`;
+    if (span) {
+        const year = new Date().getFullYear();
+        span.innerText = `© ${year} Arman Arakelyan`;
+    }
 }
 
 window.addEventListener("load", (event) => {
     displayFooterInfo();
+    // Warm up the local system speech engine index list registers
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.getVoices();
+    }
 });
