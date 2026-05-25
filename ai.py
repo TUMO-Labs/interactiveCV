@@ -1,10 +1,8 @@
 import os
 import requests
-from dotenv import load_dotenv
+from config import app
 
-load_dotenv()
-
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_API_KEY = app.config.get('GEMINI_API_KEY', '') or ''
 GEMINI_API     = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent'
 
 with open("system_prompt.txt", "r", encoding="utf-8") as file:
