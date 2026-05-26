@@ -1,6 +1,7 @@
 from datetime import datetime
 import os
 import uuid
+import shutil
 
 from flask import render_template, request, send_from_directory
 from flask_socketio import emit, join_room
@@ -43,6 +44,7 @@ def on_disconnect():
     if visitor:
         visitor.is_closed = True
         db.session.commit()
+        _cleanup_tts_folder(visitor.id)
         print(f'[disconnect] {visitor.full_name} left — session closed')
 
 
@@ -87,12 +89,27 @@ def _save_and_emit(visitor, text: str, sender: str, audio_url: str | None = None
     emit('new_message', payload)
 
 
-def _save_tts_audio(audio_bytes: bytes) -> str | None:
+def _visitor_tts_dir(visitor_id: int) -> str:
+    return os.path.join(app.instance_path, 'tts', str(visitor_id))
+
+
+def _cleanup_tts_folder(visitor_id: int):
+    tts_dir = _visitor_tts_dir(visitor_id)
+    if not os.path.isdir(tts_dir):
+        return
+    try:
+        shutil.rmtree(tts_dir)
+        print(f'[TTS] Removed folder for visitor {visitor_id}')
+    except Exception as e:
+        print(f'[TTS] cleanup error for visitor {visitor_id}: {e}')
+
+
+def _save_tts_audio(audio_bytes: bytes, visitor_id: int) -> str | None:
     if not audio_bytes:
         print('[TTS] No audio bytes to save')
         return None
 
-    tts_dir = os.path.join(app.instance_path, 'tts')
+    tts_dir = _visitor_tts_dir(visitor_id)
     os.makedirs(tts_dir, exist_ok=True)
     filename = f'tts_{uuid.uuid4().hex}.wav'
     path = os.path.join(tts_dir, filename)
@@ -103,8 +120,8 @@ def _save_tts_audio(audio_bytes: bytes) -> str | None:
         print(f'[TTS] save error: {e}')
         return None
 
-    print(f'[TTS] Saved audio file: {filename} ({len(audio_bytes)} bytes)')
-    return f'/tts/{filename}'
+    print(f'[TTS] Saved audio file: {visitor_id}/{filename} ({len(audio_bytes)} bytes)')
+    return f'/tts/{visitor_id}/{filename}'
 
 
 def process_message(visitor, message: str):
@@ -145,7 +162,7 @@ def process_message(visitor, message: str):
         audio_url = None
         audio_bytes = tts_generate(answer)
         if audio_bytes:
-            audio_url = _save_tts_audio(audio_bytes)
+            audio_url = _save_tts_audio(audio_bytes, visitor.id)
         if not audio_url:
             print('[TTS] No audio URL generated for reply')
         _save_and_emit(visitor, answer, 'bot', audio_url=audio_url)
