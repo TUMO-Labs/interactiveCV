@@ -14,7 +14,7 @@ GitHub: https://github.com/ArakelyanArman
 Status: Open to new opportunities
 
 Bio:
-Arman builds low-level systems and cloud architectures from the ground up — including IRC servers, ray-cast engines, bash shells, network gateways, and serverless web platforms. He is currently studying and working across Tumo Labs, 42 Yerevan, and NPUA.
+Arman builds low-level systems and cloud architectures from the ground up — including IRC servers, ray-cast engines, bash shells, network gateways, and serverless web platforms. He is currently studying and working across Tumo Labs, 42 Yerevan, and National Polytechnic University of Armenia.
 
 --- EDUCATION ---
 
