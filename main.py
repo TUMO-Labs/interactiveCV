@@ -1,12 +1,14 @@
 from datetime import datetime
+import os
+import uuid
 
-from flask import render_template, request
+from flask import render_template, request, send_from_directory
 from flask_socketio import emit, join_room
 
 from config import app, socketIO
 from models import Visitor, Message, db
 from bot import handle_text_message, tg_send, create_topic
-from ai import ai_reply, transcribe_any_language, RATE_LIMITED, ERRORED
+from ai import ai_reply, transcribe_any_language, tts_generate, RATE_LIMITED, ERRORED
 
 db.init_app(app)
 
@@ -15,6 +17,12 @@ db.init_app(app)
 @app.route('/')
 def home():
     return render_template('index.html')
+
+
+@app.route('/tts/<path:filename>')
+def tts_audio(filename: str):
+    tts_dir = os.path.join(app.instance_path, 'tts')
+    return send_from_directory(tts_dir, filename, mimetype='audio/wav')
 
 
 @app.route('/telegram/webhook', methods=['POST'])
@@ -65,15 +73,38 @@ def on_register(data: dict):
     )
 
 
-def _save_and_emit(visitor, text: str, sender: str):
+def _save_and_emit(visitor, text: str, sender: str, audio_url: str | None = None):
     msg = Message(visitor_id=visitor.id, sender=sender, text=text)
     db.session.add(msg)
     db.session.commit()
-    emit('new_message', {
+    payload = {
         'sender':     sender,
         'text':       text,
         'created_at': msg.created_at.isoformat(),
-    })
+    }
+    if audio_url:
+        payload['audio_url'] = audio_url
+    emit('new_message', payload)
+
+
+def _save_tts_audio(audio_bytes: bytes) -> str | None:
+    if not audio_bytes:
+        print('[TTS] No audio bytes to save')
+        return None
+
+    tts_dir = os.path.join(app.instance_path, 'tts')
+    os.makedirs(tts_dir, exist_ok=True)
+    filename = f'tts_{uuid.uuid4().hex}.wav'
+    path = os.path.join(tts_dir, filename)
+    try:
+        with open(path, 'wb') as f:
+            f.write(audio_bytes)
+    except Exception as e:
+        print(f'[TTS] save error: {e}')
+        return None
+
+    print(f'[TTS] Saved audio file: {filename} ({len(audio_bytes)} bytes)')
+    return f'/tts/{filename}'
 
 
 def process_message(visitor, message: str):
@@ -111,7 +142,13 @@ def process_message(visitor, message: str):
         return
 
     if answer:
-        _save_and_emit(visitor, answer, 'bot')
+        audio_url = None
+        audio_bytes = tts_generate(answer)
+        if audio_bytes:
+            audio_url = _save_tts_audio(audio_bytes)
+        if not audio_url:
+            print('[TTS] No audio URL generated for reply')
+        _save_and_emit(visitor, answer, 'bot', audio_url=audio_url)
         return
 
     visitor.unread_count += 1

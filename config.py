@@ -28,6 +28,14 @@ if not app.config['GEMINI_API_KEY']:
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///interactive-cv.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Text model (Gemini) settings
+app.config['TEXT_MODEL'] = os.getenv('TEXT_MODEL', 'gemini-2.5-flash')
+
+# TTS settings
+app.config['ENABLE_TTS'] = os.getenv('ENABLE_TTS', 'false').lower() in ('true', '1', 't')
+app.config['TTS_MODEL'] = os.getenv('TTS_MODEL', 'gemini-3.1-flash-tts-preview')
+app.config['TTS_VOICE_NAME'] = os.getenv('TTS_VOICE_NAME', 'Kore')
+
 socketIO = SocketIO(
     app,
     cors_allowed_origins=app.config['CORE_ORIGINS'],

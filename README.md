@@ -9,6 +9,7 @@ When a visitor starts a chat, the server can answer using a Gemini-powered assis
 - Flask app with Socket.IO real-time chat
 - Telegram webhook receiver at `/telegram/webhook`
 - Optional Gemini AI replies with a strict “fallback to human” workflow
+- Optional Gemini TTS for spoken bot replies
 - Optional voice messages (record in browser → transcribed by Gemini → processed like a normal message)
 - SQLite persistence via SQLAlchemy (stored under `instance/`)
 
@@ -19,6 +20,7 @@ When a visitor starts a chat, the server can answer using a Gemini-powered assis
 1) Visitor message → stored in SQLite
 2) Server calls `ai_reply()` (Gemini)
 3) If the AI returns text → emitted to the visitor as `🤖 Bot`
+4) If TTS is enabled → synthesize audio and include `audio_url` in the bot reply
 4) If the AI returns:
    - no API key / empty output / `__FALLBACK__` → send a holding message and forward the question to Telegram
    - rate-limited (`__RATE_LIMITED__`) → tell the visitor the AI is temporarily unavailable and notify Telegram
@@ -42,6 +44,11 @@ When a visitor starts a chat, the server can answer using a Gemini-powered assis
   - `DEV_GEMINI_API_KEY` (used when `FLASK_DEBUG=True`)
   - `PROD_GEMINI_API_KEY` (used when `FLASK_DEBUG=False`)
   - Backward compatible: `GEMINI_API_KEY` (used only if the selected key above is missing)
+  - `TEXT_MODEL=gemini-2.5-flash` (set a different Gemini model if desired)
+- Optional: Gemini TTS for spoken bot replies
+  - `ENABLE_TTS=True` to enable TTS
+  - `TTS_MODEL=gemini-3.1-flash-tts-preview`
+  - `TTS_VOICE_NAME=Kore`
 
 ## Quickstart (local)
 
@@ -66,6 +73,13 @@ DEV_GEMINI_API_KEY=your-dev-gemini-key
 PROD_GEMINI_API_KEY=your-prod-gemini-key
 # (optional backward compat)
 # GEMINI_API_KEY=your-gemini-key
+# Optional (text model)
+# TEXT_MODEL=gemini-2.5-flash
+
+# Optional (TTS)
+# ENABLE_TTS=True
+# TTS_MODEL=gemini-3.1-flash-tts-preview
+# TTS_VOICE_NAME=Kore
 
 SECRET_KEY=replace-me
 FLASK_DEBUG=True
@@ -126,7 +140,7 @@ One common approach:
 
 - The AI behavior is controlled by `system_prompt.txt`.
 - The assistant must answer only questions about Arman. For unrelated questions it must respond with `__FALLBACK__` (exact token). When that happens, the server escalates the message to Telegram.
-- Gemini endpoint is configured in `ai.py` (currently `gemini-3.5-flash`).
+- Gemini text model is configurable via `TEXT_MODEL` (default: `gemini-2.5-flash`).
 
 ## Project structure
 

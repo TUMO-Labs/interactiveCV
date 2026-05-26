@@ -16,6 +16,7 @@ let isChating    = false;
 let isRecording  = false;
 let mediaRecorder = null;
 let audioChunks  = [];
+let currentAudio = null;
 
 
 // UI state
@@ -125,6 +126,20 @@ function addMessage(message, sender = 'visitor') {
     messageContainer.scrollTop = messageContainer.scrollHeight;
 }
 
+function playBotAudio(url) {
+    if (!url) return;
+    console.log('[TTS] Attempting playback:', url);
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+    }
+
+    currentAudio = new Audio(url);
+    currentAudio.play().catch((err) => {
+        console.warn('Audio playback failed:', err);
+    });
+}
+
 function sendMessage() {
     const message = chatInput.value.trim();
     if (message === '') return;
@@ -173,7 +188,9 @@ chatInput.addEventListener('keydown', sendMessageOnEnter);
 
 // Server events
 socket.on('new_message', (data) => {
+    console.log('[Socket] new_message:', data);
     addMessage(data.text, data.sender);
+    if (data.sender === 'bot' && data.audio_url) playBotAudio(data.audio_url);
     setProcessing(false);
 });
 
