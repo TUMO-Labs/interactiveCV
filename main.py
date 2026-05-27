@@ -34,7 +34,7 @@ def on_disconnect():
     if visitor:
         visitor.is_closed = True
         db.session.commit()
-        print(f'[disconnect] {visitor.tg_username} left — session closed')
+        print(f'[disconnect] {visitor.full_name} left — session closed')
 
 
 @socketIO.on('register_visitor')
