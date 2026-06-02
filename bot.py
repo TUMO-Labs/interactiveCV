@@ -54,29 +54,6 @@ def create_topic(name: str) -> int | None:
     return None
 
 
-# FAQ auto-reply
-FAQ = {
-    'stack':      'I mainly work with C/C++, Python, and Flask.',
-    'tech':       'I mainly work with C/C++, Python, and Flask.',
-    'hire':       "I'm open to new opportunities — feel free to reach out on Telegram!",
-    'available':  "I'm open to new opportunities — feel free to reach out on Telegram!",
-    'experience': 'Check the Projects section above for a full overview of my work!',
-    'price':      "Rates depend on the project scope. Message me on Telegram and we'll talk!",
-    'rate':       "Rates depend on the project scope. Message me on Telegram and we'll talk!",
-    'hello':      'Hi! Ask me anything about my work, or leave a message for Arman directly.',
-    'hi':         'Hi! Ask me anything about my work, or leave a message for Arman directly.',
-    'hey':        'Hi! Ask me anything about my work, or leave a message for Arman directly.',
-}
-
-
-def bot_reply(text: str) -> str | None:
-    lower = text.lower()
-    for key, value in FAQ.items():
-        if key in lower:
-            return value
-    return None
-
-
 # incoming webhook dispatcher
 def handle_text_message(data: dict):
     """
