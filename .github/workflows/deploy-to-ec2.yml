@@ -1,0 +1,35 @@
+name: Deploy to EC2
+
+# Trigger deployment only on push to main branch
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to EC2 on main branch push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the files
+        uses: actions/checkout@v4
+
+      - name: Deploy to Server via SSH/RSYNC
+        uses: easingthemes/ssh-deploy@v5.1.0  # Pinned to a stable version
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.HOST_DNS }}
+          REMOTE_USER: ${{ secrets.USERNAME }}
+          TARGET: ${{ secrets.TARGET_DIR }}
+          # SOURCE: "dist/" # Uncomment and change this if you only want to upload a specific folder
+
+      - name: Executing remote ssh commands to restart services
+        uses: appleboy/ssh-action@v1.0.3  # Pinned to a stable version
+        with:
+          host: ${{ secrets.HOST_DNS }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            sudo systemctl restart ngrokCV.service
+            sudo systemctl restart interactiveCV.service
